@@ -11,13 +11,13 @@ interface ChessboardProps {
 
 const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
   const [game, setGame] = useState(new Chess());
-  const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [highlightedSquares, setHighlightedSquares] = useState<Square[]>([]);
   const [moveHistory, setMoveHistory] = useState<Move[]>([]);
-  const [turn, setTurn] = useState("white"); // To track current turn
+  const [turn, setTurn] = useState("white"); // Tracks current turn, "white" or "black"
+  const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
 
   // Sound effect hooks (move sound)
-  const [playMoveSound] = useSound("/sounds/move.mp3"); // Add move sound
+  const [playMoveSound] = useSound("/sounds/move.mp3");
 
   // Load game from local storage (state persistence)
   useEffect(() => {
@@ -68,16 +68,17 @@ const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
     }
   };
 
-  // Get all legal moves for the selected square
-  const getLegalMoves = (square: Square) => {
-    return game.moves({ square, verbose: true }).map((move: Move) => move.to);
-  };
-
-  // Handle square click (for click-to-move)
+  // Handle square click (validating drawn card and turn)
   const handleSquareClick = (square: Square) => {
     const drawnInfo = getPieceFromCard(drawnCard);
     if (!drawnInfo) {
       alert("Please draw a card first.");
+      return;
+    }
+
+    if (game.turn() !== turn[0]) {
+      // Block move if it's not the player's turn
+      alert("Wait for your turn.");
       return;
     }
 
@@ -89,7 +90,9 @@ const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
       (drawnInfo.piece !== "P" || drawnInfo.file === squareFile)
     ) {
       setSelectedSquare(square);
-      const legalMoves = getLegalMoves(square);
+      const legalMoves = game
+        .moves({ square, verbose: true })
+        .map((move) => move.to);
       setHighlightedSquares(legalMoves);
     } else {
       alert("You can only move the piece corresponding to the drawn card!");
@@ -98,7 +101,7 @@ const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
     }
   };
 
-  // Handle move when clicked (click-to-move)
+  // Handle move when square clicked
   const handleMove = (targetSquare: Square) => {
     if (selectedSquare && highlightedSquares.includes(targetSquare)) {
       const move = game.move({
@@ -123,13 +126,11 @@ const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
   // Handle undo move
   const undoMove = () => {
     if (moveHistory.length === 0) return; // Prevent undoing if no history
-    const previousMove = moveHistory.pop();
-    if (previousMove) {
-      game.undo(); // Undo the last move on the board
-      setGame(new Chess(game.fen())); // Update the game state
-      setMoveHistory([...moveHistory]); // Update move history
-      setTurn(game.turn() === "w" ? "white" : "black"); // Update turn
-    }
+
+    game.undo(); // Undo the last move on the board
+    setGame(new Chess(game.fen())); // Update the game state
+    setMoveHistory(moveHistory.slice(0, -1)); // Remove last move from history
+    setTurn(game.turn() === "w" ? "white" : "black"); // Update turn
   };
 
   // Drag-and-drop move validation
@@ -140,10 +141,14 @@ const ChessboardComponent: React.FC<ChessboardProps> = ({ drawnCard }) => {
       return false;
     }
 
+    if (game.turn() !== turn[0]) {
+      alert("It's not your turn!");
+      return false; // Block drag-drop if not player's turn
+    }
+
     const pieceAtSource = game.get(sourceSquare)?.type;
     const sourceFile = sourceSquare.charAt(0);
 
-    // Check if the drawn piece matches the source square
     if (
       pieceAtSource?.toUpperCase() === drawnInfo.piece &&
       (drawnInfo.piece !== "P" || drawnInfo.file === sourceFile)
